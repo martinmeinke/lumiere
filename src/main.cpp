@@ -9,6 +9,7 @@
 #include <time.h>
 
 #include "helpers.hpp"
+#include "uart_gps.hpp"
 #include "wifi_time.hpp"
 #include "led_time.hpp"
 
@@ -16,8 +17,8 @@
 
 #define DEMO_MODE 0
 #define CONNECT_TO_KNOWN_STATION true
-#define ESP_WIFI_SSID "MySpectrumWiFi78-2G"
-#define ESP_WIFI_PASS "purplecoat374"
+#define ESP_WIFI_SSID "OmNomNom"
+#define ESP_WIFI_PASS "abcdef14121990"
 
 extern "C" void app_main()
 {
@@ -28,6 +29,9 @@ extern "C" void app_main()
     // TODO try to lookup via webservice or use GPS?
     setenv("TZ", "EST5EDT,M3.2.0,M11.1.0", 1);
     tzset();
+
+    uart_init();
+    xTaskCreate(uart_task, "uart_task", 4096, NULL, 10, NULL);
 
     std::unordered_map<int, std::pair<gpio_num_t, ledc_channel_t>> led_gpio_channels{
         {0, std::make_pair(GPIO_NUM_13, LEDC_CHANNEL_0)},
@@ -43,24 +47,24 @@ extern "C" void app_main()
         led_time.demo_mode();
     }
 
-    WifiTime wifi_time{CONNECT_TO_KNOWN_STATION};
-    wifi_time.setup_stack();
-    wifi_time.configureSNTP();
+    // WifiTime wifi_time{CONNECT_TO_KNOWN_STATION};
+    // wifi_time.setup_stack();
+    // wifi_time.configureSNTP();
 
     tm timeinfo;
     while (true)
     {
-        if (!time_is_synchronized(timeinfo))
-        {
-            if (!wifi_time.isConnected())
-            {
-#ifdef ESP_WIFI_SSID
-                wifi_time.connect(ESP_WIFI_SSID, ESP_WIFI_PASS);
-#else
-                wifi_time.scanForWifi();
-#endif
-            }
-        }
+//         if (!time_is_synchronized(timeinfo))
+//         {
+//             if (!wifi_time.isConnected())
+//             {
+// #ifdef ESP_WIFI_SSID
+//                 wifi_time.connect(ESP_WIFI_SSID, ESP_WIFI_PASS);
+// #else
+//                 wifi_time.scanForWifi();
+// #endif
+//             }
+//         }
 
         while (!time_is_synchronized(timeinfo))
         {
@@ -71,7 +75,7 @@ extern "C" void app_main()
         led_time.update(timeinfo);
 
         // Configure wakeup timer for 10 seconds
-        esp_sleep_enable_timer_wakeup(10 * 1000000); // 10 seconds
+        esp_sleep_enable_timer_wakeup(60 * 1000000); // 10 seconds
 
         // Log message (optional, for debug purposes)
         ESP_LOGI("SLEEP", "Entering light sleep for 10 seconds");

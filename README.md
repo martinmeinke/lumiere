@@ -9,3 +9,4 @@ Is a minimal-user-interface clock a that doesn't disturbe your sleep
 ## Why?
 
 ## How?
+- Keep sync via gps?

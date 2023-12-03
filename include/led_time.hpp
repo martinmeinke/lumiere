@@ -20,7 +20,7 @@ public:
         }
     }
 
-    void update(const tm &timeinfo)
+    void update(const tm &timeinfo, const float light_sensor_reading)
     {
         const auto hour_12 = timeinfo.tm_hour % 12;
         const float hour_fraction = timeinfo.tm_min / 60.0f;
@@ -45,7 +45,7 @@ public:
             }
             // ESP_LOGI("LED_STATUS", "LED: %i hour_fraction: %f intensity: %f", i, hour_fraction, intensity);
             //  Change duty cycle
-            ledc_set_duty(LEDC_LOW_SPEED_MODE, m_gpio_config[i].second, intensityCalibration(intensity));
+            ledc_set_duty(LEDC_LOW_SPEED_MODE, m_gpio_config[i].second, intensityCalibration(intensity, light_sensor_reading));
             ledc_update_duty(LEDC_LOW_SPEED_MODE, m_gpio_config[i].second);
         }
     }
@@ -61,7 +61,7 @@ public:
                 {
                     timeinfo.tm_hour = h;
                     timeinfo.tm_min = m;
-                    update(timeinfo);
+                    update(timeinfo, 1.0f);
 
                     vTaskDelay(4);
                 }
@@ -69,15 +69,25 @@ public:
         }
     }
 
-private:
-    int intensityCalibration(float intensity, float steepness = 3)
+    void turn_off()
     {
-        static constexpr int kMaxIntensity = 200;
+        for (int i = 0; i < 6; i++)
+        {
+            ledc_set_duty(LEDC_LOW_SPEED_MODE, m_gpio_config[i].second, 0);
+            ledc_update_duty(LEDC_LOW_SPEED_MODE, m_gpio_config[i].second);
+        }
+    }
+
+private:
+    int intensityCalibration(float intensity, const float light_sensor_reading, float steepness = 3)
+    {
+        static constexpr int kMaxIntensity = 1023;
         static constexpr int kMinIntensity = 0;
 
         // Calculate the interpolated value
         double normalized = (exp(steepness * intensity) - 1) / (exp(steepness) - 1);
-        double y = kMinIntensity + (kMaxIntensity - kMinIntensity) * normalized;
+        double light_sensor_factor = std::max(0.1f, std::min(1.0f, light_sensor_reading * 5));
+        double y = kMinIntensity + (kMaxIntensity - kMinIntensity) * normalized * light_sensor_factor;
 
         // Convert to integer and return
         return static_cast<int>(y);

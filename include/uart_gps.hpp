@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 
+#define GPS_POWER_PIN GPIO_NUM_2
+
 // Struct to hold GPRMC data
 struct GPRMCData {
   tm timeinfo;
@@ -93,6 +95,16 @@ void set_time(GPRMCData &gps_data) {
   settimeofday(&now, NULL);
 }
 
+void setup_gpio_out() {
+  gpio_config_t config;
+  config.pin_bit_mask = (1 << GPS_POWER_PIN);
+  config.mode = GPIO_MODE_OUTPUT;
+  config.pull_up_en = GPIO_PULLUP_ENABLE;
+  config.pull_down_en = GPIO_PULLDOWN_DISABLE;
+  config.intr_type = GPIO_INTR_DISABLE;
+  gpio_config(&config);
+}
+
 void uart_init() {
   ESP_LOGI("UART", "uart_init");
 
@@ -108,6 +120,8 @@ void uart_init() {
   uart_driver_install(UART_NUM_1, 1024 * 2, 0, 0, NULL, 0);
   uart_set_pin(UART_NUM_1, GPIO_NUM_4, GPIO_NUM_5, UART_PIN_NO_CHANGE,
                UART_PIN_NO_CHANGE);
+
+  setup_gpio_out();
 }
 
 void uart_task(void *pvParameters) {
@@ -129,4 +143,12 @@ void uart_task(void *pvParameters) {
       }
     }
   }
+}
+
+void power_down_gps() {
+  gpio_set_level(GPS_POWER_PIN, 0); // Set to 0 to turn off the GPS module
+}
+
+void power_up_gps() {
+  gpio_set_level(GPS_POWER_PIN, 1); // Set to 1 to turn on the GPS module
 }

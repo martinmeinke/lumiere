@@ -6,6 +6,8 @@
 #include <esp_wifi.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <nvs.h>
+#include <nvs_flash.h>
 #include <time.h>
 
 #include "helpers.hpp"
@@ -17,23 +19,24 @@
 #include <unordered_map>
 
 #define DEMO_MODE 0
+#define BATTERY_POWERED 0
 #define CONNECT_TO_KNOWN_STATION true
-#define ESP_WIFI_SSID "OmNomNom"
-#define ESP_WIFI_PASS "abcdef14121990"
+#define ESP_WIFI_SSID ""
+#define ESP_WIFI_PASS ""
 
-void check_battery_voltage_and_sleep(LedTime* led_time=nullptr) {
+void check_battery_voltage_and_sleep(LedTime *led_time = nullptr) {
   static constexpr float kAdcRefVoltage = 3.3;
   static constexpr float kVoltageDividerFactor = 2.0;
   const auto adc_value_battery = read_adc_value(ADC1_CHANNEL_7);
   const auto battery_voltage =
       adc_value_battery * kAdcRefVoltage * kVoltageDividerFactor;
+  ESP_LOGI("BATTERY", "adc_value_battery: %f\n", adc_value_battery);
   ESP_LOGI("BATTERY", "Voltage: %f\n", battery_voltage);
 
   static constexpr auto kSleepBv = 3.0;
   if (battery_voltage < kSleepBv) {
     power_down_gps();
-    if(led_time != nullptr)
-    {
+    if (led_time != nullptr) {
       led_time->turn_off();
     }
     esp_sleep_enable_timer_wakeup(100000000); // 100 seconds in microseconds
@@ -56,7 +59,18 @@ extern "C" void app_main() {
   init_adc(ADC1_CHANNEL_7);
   uart_init();
 
-  check_battery_voltage_and_sleep();
+  // Initialize NVS - we store latest gps sync
+  esp_err_t ret = nvs_flash_init();
+  if (ret == ESP_ERR_NVS_NO_FREE_PAGES ||
+      ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+    ESP_ERROR_CHECK(nvs_flash_erase());
+    ret = nvs_flash_init();
+  }
+  ESP_ERROR_CHECK(ret);
+
+  if (BATTERY_POWERED) {
+    check_battery_voltage_and_sleep();
+  }
 
   power_up_gps();
   xTaskCreate(uart_task, "uart_task", 4096, NULL, 10, NULL);
@@ -75,6 +89,7 @@ extern "C" void app_main() {
     led_time.demo_mode();
   }
 
+  // Keep wifi time disabled for now
   // WifiTime wifi_time{CONNECT_TO_KNOWN_STATION};
   // wifi_time.setup_stack();
   // wifi_time.configureSNTP();
@@ -84,7 +99,9 @@ extern "C" void app_main() {
     const auto adc_value_light_sensor = read_adc_value(ADC1_CHANNEL_6);
     ESP_LOGI("LIGHT", "ADC Value: %f\n", adc_value_light_sensor);
 
-    check_battery_voltage_and_sleep(&led_time);
+    if (BATTERY_POWERED) {
+      check_battery_voltage_and_sleep(&led_time);
+    }
 
     //         if (!time_is_synchronized(timeinfo))
     //         {
@@ -98,6 +115,20 @@ extern "C" void app_main() {
     //             }
     //         }
 
+    time_t last_gps_time;
+    ESP_ERROR_CHECK(read_event_time_from_nvs("gps_time", &last_gps_time));
+    time_t now = 0;
+    time(&now);
+    ESP_LOGI("TIMESYNC", "now(%lld) - last_gps_time(%lld): %lld", now, last_gps_time, now - last_gps_time);
+
+    const auto time_outdated = (now - last_gps_time) > 60 * 60 * 24 * 30;
+
+    if (time_outdated) {
+      // uninitialize system time
+      struct timeval reset_time = {.tv_sec = 0};
+      settimeofday(&reset_time, NULL);
+    }
+
     while (!time_is_synchronized(timeinfo)) {
       power_up_gps();
       ESP_LOGI("TIMESYNC", "Waiting for timesync");
@@ -107,11 +138,8 @@ extern "C" void app_main() {
 
     led_time.update(timeinfo, adc_value_light_sensor);
 
-    // Configure wakeup timer for 10 seconds
-    esp_sleep_enable_timer_wakeup(1 * 1000000); // 10 seconds
-
-    // Log message (optional, for debug purposes)
-    ESP_LOGI("SLEEP", "Entering light sleep for 10 seconds");
+    esp_sleep_enable_timer_wakeup(60 * 1000000);
+    ESP_LOGI("SLEEP", "Entering light sleep for 60 seconds");
     esp_light_sleep_start();
   }
 }

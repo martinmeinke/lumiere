@@ -3,6 +3,8 @@
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "nvs.h"
+#include "nvs_flash.h"
 #include <iostream>
 #include <optional>
 #include <sstream>
@@ -17,6 +19,14 @@ struct GPRMCData {
   std::string status;
   double latitude;
   double longitude;
+};
+
+// Struct to hold GPGLL data
+struct GPGLLData {
+  tm timeinfo;
+  double latitude;
+  double longitude;
+  std::string validity;
 };
 
 // Function to split a string by a delimiter into a vector
@@ -87,7 +97,48 @@ std::optional<GPRMCData> parseGPRMC(const std::string &gprmc) {
   return data;
 }
 
+// Function to parse a GPGLL GPS sentence
+std::optional<GPGLLData> parseGPGLL(const std::string &sentence) {
+  GPGLLData data;
+
+  size_t gpgllPos = sentence.find("$GPGLL");
+  if (gpgllPos == std::string::npos) {
+    return std::nullopt; // GPGLL not found
+  }
+
+  // Extract substring from GPGLL to the end
+  std::string gpgll = sentence.substr(gpgllPos);
+  ESP_LOGI("UART", "yay");
+
+  std::vector<std::string> tokens = split(gpgll, ',');
+  if (tokens.size() < 7) {
+    return std::nullopt; // Not enough data
+  }
+
+  // Parse UTC time
+  std::string timeStr = tokens[5];
+  if (timeStr.length() >= 6) {
+    data.timeinfo = tm(); // Initialize to zero
+    data.timeinfo.tm_hour = std::stoi(timeStr.substr(0, 2));
+    data.timeinfo.tm_min = std::stoi(timeStr.substr(2, 2));
+    data.timeinfo.tm_sec = std::stoi(timeStr.substr(4, 2));
+  } else {
+    return std::nullopt; // Invalid time format
+  }
+  ESP_LOGI("UART", "yay5");
+
+  return data;
+}
+
 void set_time(GPRMCData &gps_data) {
+  // Convert to epoch time (seconds since 1970-01-01 00:00:00 UTC)
+  time_t t = mktime(&gps_data.timeinfo);
+  // Set system time
+  struct timeval now = {.tv_sec = t};
+  settimeofday(&now, NULL);
+}
+
+void set_time(GPGLLData &gps_data) {
   // Convert to epoch time (seconds since 1970-01-01 00:00:00 UTC)
   time_t t = mktime(&gps_data.timeinfo);
   // Set system time
@@ -124,6 +175,52 @@ void uart_init() {
   setup_gpio_out();
 }
 
+esp_err_t save_event_time_to_nvs(const char *key, time_t event_time) {
+  nvs_handle_t my_handle;
+  esp_err_t err;
+
+  // Open
+  err = nvs_open("storage", NVS_READWRITE, &my_handle);
+  if (err != ESP_OK)
+    return err;
+
+  // Write
+  err = nvs_set_i64(my_handle, key, (int64_t)event_time);
+  if (err != ESP_OK)
+    return err;
+
+  // Commit written value.
+  err = nvs_commit(my_handle);
+  if (err != ESP_OK)
+    return err;
+
+  // Close
+  nvs_close(my_handle);
+  return ESP_OK;
+}
+
+esp_err_t read_event_time_from_nvs(const char *key, time_t *event_time) {
+  nvs_handle_t my_handle;
+  esp_err_t err;
+
+  // Open
+  err = nvs_open("storage", NVS_READWRITE, &my_handle);
+  if (err != ESP_OK)
+    return err;
+
+  // Read
+  int64_t stored_time = 0; // Variable to store the read value
+  err = nvs_get_i64(my_handle, key, &stored_time);
+  if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND)
+    return err;
+
+  *event_time = (time_t)stored_time;
+
+  // Close
+  nvs_close(my_handle);
+  return ESP_OK;
+}
+
 void uart_task(void *pvParameters) {
   const int uart_num = UART_NUM_1;
   uint8_t data[1024];
@@ -135,12 +232,17 @@ void uart_task(void *pvParameters) {
       ESP_LOGI("UART", "Received data: %s", data);
       auto parsed_data =
           parseGPRMC(std::string{reinterpret_cast<char *>(data)});
+      // auto parsed_data =
+      //     parseGPGLL(std::string{reinterpret_cast<char *>(data)});
       if (parsed_data) {
         printTimeInfo(parsed_data->timeinfo);
         set_time(*parsed_data);
-      } else {
-        ESP_LOGE("UART", "Failed to parse GPRMC sentence.");
+        time_t save_time = mktime(&parsed_data->timeinfo);
+        ESP_ERROR_CHECK(save_event_time_to_nvs("gps_time", save_time));
+        ESP_LOGI("UART_TASK", "Event time %lld saved", save_time);
       }
+    } else {
+      ESP_LOGE("UART", "Failed to parse GPRMC sentence.");
     }
   }
 }

@@ -3,7 +3,6 @@
 #include <esp_event.h>
 #include <esp_log.h>
 #include <esp_sleep.h>
-#include <esp_wifi.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <nvs.h>
@@ -14,15 +13,11 @@
 #include "led_time.hpp"
 #include "light_sensor.hpp"
 #include "uart_gps.hpp"
-#include "wifi_time.hpp"
 
 #include <unordered_map>
 
 #define DEMO_MODE 0
-#define BATTERY_POWERED 0
-#define CONNECT_TO_KNOWN_STATION true
-#define ESP_WIFI_SSID ""
-#define ESP_WIFI_PASS ""
+#define BATTERY_POWERED 1
 
 void check_battery_voltage_and_sleep(LedTime *led_time = nullptr) {
   static constexpr float kAdcRefVoltage = 3.3;
@@ -89,11 +84,6 @@ extern "C" void app_main() {
     led_time.demo_mode();
   }
 
-  // Keep wifi time disabled for now
-  // WifiTime wifi_time{CONNECT_TO_KNOWN_STATION};
-  // wifi_time.setup_stack();
-  // wifi_time.configureSNTP();
-
   tm timeinfo;
   while (true) {
     const auto adc_value_light_sensor = read_adc_value(ADC1_CHANNEL_6);
@@ -103,23 +93,12 @@ extern "C" void app_main() {
       check_battery_voltage_and_sleep(&led_time);
     }
 
-    //         if (!time_is_synchronized(timeinfo))
-    //         {
-    //             if (!wifi_time.isConnected())
-    //             {
-    // #ifdef ESP_WIFI_SSID
-    //                 wifi_time.connect(ESP_WIFI_SSID, ESP_WIFI_PASS);
-    // #else
-    //                 wifi_time.scanForWifi();
-    // #endif
-    //             }
-    //         }
-
     time_t last_gps_time;
     ESP_ERROR_CHECK(read_event_time_from_nvs("gps_time", &last_gps_time));
     time_t now = 0;
     time(&now);
-    ESP_LOGI("TIMESYNC", "now(%lld) - last_gps_time(%lld): %lld", now, last_gps_time, now - last_gps_time);
+    ESP_LOGI("TIMESYNC", "now(%lld) - last_gps_time(%lld): %lld", now,
+             last_gps_time, now - last_gps_time);
 
     const auto time_outdated = (now - last_gps_time) > 60 * 60 * 24 * 30;
 

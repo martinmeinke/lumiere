@@ -10,6 +10,10 @@ I wanted a minimal-maintenance clock for my nightstand that is dim enough so it 
 #### Time display using 6 red LED's
 
 
+https://github.com/martinmeinke/lumiere/assets/1669917/069eb608-f291-4bde-aa8d-8807bc40c60b
+
+
+
 #### Automatic brightness adjustment
 A light sensor on the back of the device is used to assess the ambient brightness and dim the LEDs accordingly. It's a good thing the device does not feature housing on the rear end, otherwise this might have been more complicated.
 

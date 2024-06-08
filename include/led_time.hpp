@@ -53,7 +53,7 @@ public:
           timeinfo.tm_min = m;
           update(timeinfo, 1.0f);
 
-          vTaskDelay(4);
+          vTaskDelay(2);
         }
       }
     }

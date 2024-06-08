@@ -44,10 +44,7 @@ extern "C" void app_main() {
   ESP_LOGI("MAIN", "starting");
   vTaskDelay(2000 / portTICK_PERIOD_MS);
 
-  // Timezone Berlin:
-  // https://github.com/nayarsystems/posix_tz_db/blob/master/zones.csv
-  // TODO try to lookup via webservice or use GPS?
-  setenv("TZ", "EST5EDT,M3.2.0,M11.1.0", 1);
+  setenv("TZ", "UTC", 1);
   tzset();
 
   init_adc(ADC1_CHANNEL_6);
